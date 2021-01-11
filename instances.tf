@@ -14,14 +14,14 @@ data "aws_ssm_parameter" "linuxAmiOregon" {
 resource "aws_key_pair" "master-key" {
   provider   = aws.region-master
   key_name   = "jenkins"
-  public_key = file("~/.ssh/lab-key1.pub")
+  public_key = file("~/.ssh/id_rsa.pub")
 }
 
 # Create key-pair for logging into EC2 in us-west-2
 resource "aws_key_pair" "worker-key" {
   provider   = aws.region-worker
   key_name   = "jenkins"
-  public_key = file("~/.ssh/lab-key1.pub")
+  public_key = file("~/.ssh/id_rsa.pub")
 }
 
 # Create and bootstrap EC2 in us-east-1
@@ -39,6 +39,13 @@ resource "aws_instance" "jenkins-master" {
   }
 
   depends_on = [aws_main_route_table_association.set-master-default-rt-assoc]
+
+  provisioner "local-exec" {
+    command = <<EOF
+aws --profile ${var.profile} ec2 wait instance-status-ok --region ${var.region-master} --instance-ids ${self.id}
+ansible-playbook --extra-vars 'passed_in_hosts=tag_Name_${self.tags.Name}' ansible_templates/jenkins-master-sample.yml
+EOF
+  }
 }
 
 # Create EC2 in us-west-2
@@ -57,4 +64,11 @@ resource "aws_instance" "jenkins-worker-oregon" {
   }
 
   depends_on = [aws_main_route_table_association.set-worker-default-rt-assoc, aws_instance.jenkins-master]
+
+  provisioner "local-exec" {
+    command = <<EOF
+aws --profile ${var.profile} ec2 wait instance-status-ok --region ${var.region-worker} --instance-ids ${self.id}
+ansible-playbook --extra-vars 'passed_in_hosts=tag_Name_${self.tags.Name}' ansible_templates/jenkins-worker-sample.yml
+EOF
+  }
 }
